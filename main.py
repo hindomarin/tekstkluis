@@ -1,4 +1,4 @@
-
+from cryptography.exceptions import InvalidTag
 import os
 import base64
 from getpass import getpass
@@ -42,6 +42,41 @@ def versleutel(tekst, wachtwoord):
     return f"kluis:v1:{salt_b64}:{nonce_b64}:{ciphertext_b64}"
 
 
+# Decrypt text with the given password
+def ontsleutel(regel, wachtwoord):
+    delen = regel.strip().split(":")
+
+    if len(delen) != 5 or delen[0] != "kluis" or delen[1] != "v1":
+        raise ValueError("Dit is geen geldige Tekstkluis-regel")
+
+    try:
+        salt = base64.b64decode(delen[2], validate=True)
+        nonce = base64.b64decode(delen[3], validate=True)
+        ciphertext = base64.b64decode(delen[4], validate=True)
+
+    except (ValueError, base64.binascii.Error):
+        raise ValueError("De regel bevat ongeldige tekens") from None
+
+    if len(salt) != 16 or len(nonce) != 12 or len(ciphertext) < 16:
+        raise ValueError("De regel is onvolledig")
+
+    sleutel = maak_sleutel(wachtwoord, salt)
+    aesgcm = AESGCM(sleutel)
+
+    try:
+        tekst = aesgcm.decrypt(
+            nonce,
+            ciphertext,
+            b"kluis:v1"
+        )
+
+    except InvalidTag:
+        raise ValueError(
+            "Verkeerd wachtwoord, of de versleutelde tekst is aangepast"
+        ) from None
+
+    return tekst.decode("utf-8")
+
 # Main menu
 while True:
     print("\n=== Tekstkluis ===")
@@ -74,8 +109,23 @@ while True:
         print("\nVersleutelde tekst:")
         print(resultaat)
 
+
     elif keuze == "2":
-        print("Ontsleutelen komt later")
+        regel = input("Versleutelde tekst: ")
+        wachtwoord = getpass("Wachtwoord: ")
+
+        if wachtwoord == "":
+            print("Wachtwoord mag niet leeg zijn")
+            continue
+
+        try:
+            resultaat = ontsleutel(regel, wachtwoord)
+
+            print("\nOntsleutelde tekst:")
+            print(resultaat)
+
+        except ValueError as fout:
+            print(fout)
 
     elif keuze == "3":
         print("Programma afgesloten")
